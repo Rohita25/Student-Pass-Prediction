@@ -117,4 +117,4 @@ if show_table:
     st.dataframe(df_combined.reset_index(drop=True), use_container_width=True)
 
 st.markdown("---")
-st.caption("📘 Made with ❤️ by Rohita")
+st.caption("📘 Made with ❤️ by Rohita | Enhanced Dashboard with Filters, Boxplots & Table View")
