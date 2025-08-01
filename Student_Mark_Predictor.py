@@ -1,120 +1,107 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-from sklearn.model_selection import train_test_split
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
+import plotly.express as px
+import seaborn as sns
+import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Live Student Dashboard", layout="wide", page_icon="📘")
-st.title("📘 Live Student Pass/Fail Prediction Dashboard")
+st.set_page_config(page_title="🎓 Student Pass Predictor", layout="wide", initial_sidebar_state="expanded")
 
-# Load dataset
-df = pd.read_csv("Student_Mark.csv")
-subject_cols = ['Math', 'Science', 'English', 'History', 'Computer']
+st.title("🎓 Student Performance Prediction App")
+st.markdown("Upload a student marks dataset to predict pass/fail outcomes. Customize your threshold and explore model insights.")
 
-# Sidebar - Input Panel
-st.sidebar.header("📋 Enter Student Marks")
-math = st.sidebar.slider("Math", 0, 100, 60)
-science = st.sidebar.slider("Science", 0, 100, 60)
-english = st.sidebar.slider("English", 0, 100, 60)
-history = st.sidebar.slider("History", 0, 100, 60)
-computer = st.sidebar.slider("Computer", 0, 100, 60)
+# Sidebar for interaction
+st.sidebar.header("⚙️ Settings")
+threshold = st.sidebar.slider("🔁 Pass Mark Threshold", 0, 100, 40)
+show_conf_matrix = st.sidebar.checkbox("📉 Show Confusion Matrix", value=True)
+show_feature_importance = st.sidebar.checkbox("📊 Show Feature Importance", value=True)
 
-pass_logic = st.sidebar.radio("Pass Criteria", ["Average ≥ 60", "At least 3 Subjects ≥ 60"])
-chart_type = st.sidebar.selectbox("Chart Type", ["Histogram", "Pie Chart", "Bar Chart", "Box Plot"])
-show_table = st.sidebar.checkbox("🔍 Show Full Dataset")
+# File Upload
+uploaded_file = st.file_uploader("📂 Upload your CSV file", type=["csv"])
 
-# Optional: Filter dataset by pass/fail
-filter_option = st.sidebar.radio("Filter Students", ["All", "Pass Only", "Fail Only"])
+if uploaded_file is not None:
+    df = pd.read_csv(uploaded_file)
 
-# Create input data
-data_input = pd.DataFrame([[math, science, english, history, computer]], columns=subject_cols)
-
-# Apply pass/fail logic
-if pass_logic == "Average ≥ 60":
-    df["Average"] = df[subject_cols].mean(axis=1)
-    df["Pass"] = df["Average"].apply(lambda x: 1 if x >= 60 else 0)
-    input_avg = data_input.mean(axis=1)[0]
-    input_pass = 1 if input_avg >= 60 else 0
-    data_input["Average"] = input_avg
-    data_input["Pass"] = input_pass
-    display_metric = "Average"
-else:
-    df["Subjects_Passed"] = df[subject_cols].apply(lambda row: sum(row >= 60), axis=1)
-    df["Pass"] = df["Subjects_Passed"].apply(lambda x: 1 if x >= 3 else 0)
-    input_passed = sum(data_input.iloc[0] >= 60)
-    input_pass = 1 if input_passed >= 3 else 0
-    data_input["Subjects_Passed"] = input_passed
-    data_input["Pass"] = input_pass
-    display_metric = "Subjects_Passed"
-
-# Add name for user input row
-data_input["Name"] = "🧑 You"
-if "Name" not in df.columns:
-    df["Name"] = [f"Student {i+1}" for i in range(len(df))]
-
-# Append user input row
-df_combined = pd.concat([df, data_input], ignore_index=True)
-
-# Filter view
-if filter_option == "Pass Only":
-    df_combined = df_combined[df_combined["Pass"] == 1]
-elif filter_option == "Fail Only":
-    df_combined = df_combined[df_combined["Pass"] == 0]
-
-# Train model
-X = df[subject_cols]
-y = df["Pass"]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-model = RandomForestClassifier()
-model.fit(X_train, y_train)
-acc = accuracy_score(y_test, model.predict(X_test))
-
-# Layout
-col1, col2 = st.columns([2, 1])
-
-# Charts
-with col1:
-    st.subheader("📊 Live Chart (Includes Your Data)")
-    if chart_type == "Histogram":
-        fig = px.histogram(df_combined, x=display_metric, color="Pass", nbins=10,
-                           title=f"{display_metric} Distribution",
-                           color_discrete_map={1: "green", 0: "red"})
-    elif chart_type == "Pie Chart":
-        fig = px.pie(df_combined, names="Pass", title="Pass/Fail Ratio",
-                     color='Pass', hole=0.4,
-                     color_discrete_map={1: "green", 0: "red"})
-    elif chart_type == "Bar Chart":
-        fig = px.bar(df_combined.sort_values(by=display_metric, ascending=False).head(10),
-                     x="Name", y=display_metric, color="Pass",
-                     title=f"Top 10 by {display_metric}",
-                     color_discrete_map={1: "green", 0: "red"})
+    # Check for valid columns
+    if df.shape[1] < 3:
+        st.error("Dataset should contain at least 3 columns (Name and subject marks).")
     else:
-        fig = px.box(df_combined, y=display_metric, color="Pass",
-                     title=f"Box Plot of {display_metric} by Pass Status",
-                     color_discrete_map={1: "green", 0: "red"})
+        # Process data
+        subject_cols = df.columns[1:]
+        df["Average"] = df[subject_cols].mean(axis=1)
+        df["Result"] = np.where(df["Average"] >= threshold, "Pass", "Fail")
 
-    st.plotly_chart(fig, use_container_width=True)
+        st.subheader("📊 Data Preview")
+        st.dataframe(df)
 
-# Sidebar metrics and user prediction
-with col2:
-    st.subheader("🧠 Model Info")
-    st.metric("Accuracy", f"{acc:.2f}")
-    st.metric("Criteria", pass_logic)
+        # Charts
+        st.subheader("📈 Pass vs Fail Distribution")
+        pie = px.pie(df, names='Result', title='Pass/Fail Count', color='Result',
+                     color_discrete_map={"Pass": "green", "Fail": "red"})
+        st.plotly_chart(pie, use_container_width=True)
 
-    st.subheader("📌 Your Prediction")
-    if input_pass == 1:
-        st.success("🎉 Based on the input, the student is likely to PASS!")
-    else:
-        st.error("⚠️ Based on the input, the student may FAIL.")
+        st.subheader("📘 Subject-wise Average")
+        avg_marks = df[subject_cols].mean()
+        bar_fig = px.bar(x=avg_marks.index, y=avg_marks.values, labels={'x': 'Subjects', 'y': 'Average'},
+                         title="Average Marks per Subject", color=avg_marks.values, color_continuous_scale="Viridis")
+        st.plotly_chart(bar_fig, use_container_width=True)
 
-    if st.button("📂 Save this prediction"):
-        st.toast("Saved locally. (Add backend to persist)")
+        # ML Model
+        X = df[subject_cols]
+        y = df["Result"]
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Full data display
-if show_table:
-    st.subheader("🔍 Full Dataset View")
-    st.dataframe(df_combined.reset_index(drop=True), use_container_width=True)
+        model = RandomForestClassifier(random_state=42)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        st.success(f"✅ Model Accuracy: {acc * 100:.2f}%")
 
-st.markdown("---")
-st.caption("📘 Made with ❤️ by Rohita | Enhanced Dashboard with Filters, Boxplots & Table View")
+        # Confusion Matrix
+        if show_conf_matrix:
+            st.subheader("📉 Confusion Matrix")
+            cm = confusion_matrix(y_test, y_pred, labels=["Pass", "Fail"])
+            fig_cm, ax = plt.subplots()
+            sns.heatmap(cm, annot=True, fmt="d", cmap="Blues", xticklabels=["Pass", "Fail"], yticklabels=["Pass", "Fail"])
+            ax.set_xlabel("Predicted")
+            ax.set_ylabel("Actual")
+            st.pyplot(fig_cm)
+
+        # Feature Importance
+        if show_feature_importance:
+            st.subheader("📊 Feature Importance")
+            importance = pd.DataFrame({"Subject": subject_cols, "Importance": model.feature_importances_})
+            importance = importance.sort_values("Importance", ascending=False)
+            fig_imp = px.bar(importance, x="Subject", y="Importance", title="Feature Importance", color="Importance",
+                             color_continuous_scale="Teal")
+            st.plotly_chart(fig_imp, use_container_width=True)
+
+        # Prediction
+        st.subheader("🎯 Predict Student Result")
+        with st.form("prediction_form"):
+            cols = st.columns(len(subject_cols))
+            inputs = [cols[i].number_input(f"{sub} Marks", 0, 100, key=sub) for i, sub in enumerate(subject_cols)]
+            submitted = st.form_submit_button("Predict")
+            if submitted:
+                input_data = np.array([inputs])
+                result = model.predict(input_data)[0]
+                st.info(f"🎓 Prediction: The student will **{result.upper()}**")
+
+        # Download Results
+        st.subheader("⬇️ Download Prediction CSV")
+        df_out = df.copy()
+        csv = df_out.to_csv(index=False).encode("utf-8")
+        st.download_button("Download Result Data", data=csv, file_name="predicted_results.csv", mime="text/csv")
+
+        # Model Summary
+        with st.expander("ℹ️ Model Summary & Insights"):
+            st.markdown("""
+            - **Model Used**: Random Forest Classifier  
+            - **Features**: Subject marks  
+            - **Target**: Pass/Fail based on average marks  
+            - **Threshold**: Customizable average to define passing  
+            - **Use Case**: Academic performance tracking and early alerts  
+            """)
